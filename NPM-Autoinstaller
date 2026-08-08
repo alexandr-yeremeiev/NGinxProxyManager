@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Nginx Proxy Manager one-shot installer for Ubuntu 24.04
-# Usage: curl -sSL https://githubusercontent.com... | bash
+# Usage: ./NPM-Autoinstaller
 
 set -euo pipefail
 
@@ -33,6 +33,9 @@ need_root() {
 }
 
 pkg_install() {
+  echo "[+] Cleaning up old docker repository list if exists..."
+  rm -f /etc/apt/sources.list.d/docker.list
+
   echo "[+] Updating apt packages..."
   apt-get update -y
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -192,3 +195,4 @@ write_compose
 open_firewall
 bring_up
 print_summary
+
