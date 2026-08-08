@@ -4,117 +4,30 @@
 
 set -euo pipefail
 
-# ---------------------------------------------------------------------
-# Settings
-# ---------------------------------------------------------------------
-NPM_DIR="${NPM_DIR:-/opt/nginx-proxy-manager}"
-APP_IMAGE="jc21/nginx-proxy-manager:latest"
-DB_IMAGE="jc21/mariadb-aria:latest"
-DB_NAME="npm_db"
-DB_USER="npm"
+NPM_DIR="/opt/nginx-proxy-manager"
 
-# Secure passwords
-DB_PASS="${DB_PASS:-$(openssl rand -base64 24 | tr -dc A-Za-z0-9 | head -c 24 || echo npm_pass_ChangeMe)}"
-DB_ROOT_PASS="${DB_ROOT_PASS:-$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 32 || echo root_pass_ChangeMe)}"
+echo "[+] Скрипт запущен. Очищаем старые ошибки репозиториев..."
+rm -f /etc/apt/sources.list.d/docker.list
 
-# Default host ports
-HTTP_PORT_HOST_DEFAULT=80
-HTTPS_PORT_HOST_DEFAULT=443
-ADMIN_PORT_HOST_DEFAULT=81
+echo "[+] Обновляем системные пакеты..."
+apt-get update -y
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg lsb-release lsof ufw openssl
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
-need_root() {
-  if [[ "${EUID}" -ne 0 ]]; then
-    echo "[!] Please run as root or use sudo!"
-    exit 1
-  fi
-}
+# Проверяем, установлен ли Docker. Если нет — ставим его стандартным пакетом Ubuntu
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[+] Устанавливаем Docker и Docker Compose..."
+  DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose-v2
+  systemctl enable docker
+  systemctl start docker
+else
+  echo "[=] Docker уже установлен в системе."
+fi
 
-pkg_install() {
-  echo "[+] Cleaning up old docker repository list if exists..."
-  rm -f /etc/apt/sources.list.d/docker.list
+echo "[+] Создаем директории для Nginx Proxy Manager..."
+mkdir -p "${NPM_DIR}/data" "${NPM_DIR}/letsencrypt" "${NPM_DIR}/data/mysql"
 
-  echo "[+] Updating apt packages..."
-  apt-get update -y
-  DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    ca-certificates curl gnupg lsb-release lsof ufw openssl
-}
-
-install_docker() {
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "[+] Installing Docker from official repository..."
-    
-    # Add Docker's official GPG key:
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://docker.com -o /etc/apt/keyrings/docker.asc
-    chmod a+r /etc/apt/keyrings/docker.asc
-
-    # Add the repository to Apt sources:
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://docker.com \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      tee /etc/apt/sources.list.d/docker.list > /dev/null
-    
-    apt-get update -y
-    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    
-    systemctl enable docker
-    systemctl start docker
-  else
-    echo "[=] Docker already installed."
-  fi
-
-  DOCKER_COMPOSE_CMD="docker compose"
-}
-
-add_user_to_docker_group() {
-  if getent group docker >/dev/null 2>&1; then
-    :
-  else
-    groupadd docker
-  fi
-  if [[ -n "${SUDO_USER:-}" ]]; then
-    usermod -aG docker "${SUDO_USER}"
-  fi
-}
-
-port_busy() {
-  local port="$1"
-  if lsof -i TCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    return 0
-  fi
-  return 1
-}
-
-decide_ports() {
-  HTTP_PORT_HOST="$HTTP_PORT_HOST_DEFAULT"
-  HTTPS_PORT_HOST="$HTTPS_PORT_HOST_DEFAULT"
-  ADMIN_PORT_HOST="$ADMIN_PORT_HOST_DEFAULT"
-
-  if port_busy "$HTTP_PORT_HOST"; then
-    echo "[!] Port 80 is busy. Using 8080 for HTTP."
-    HTTP_PORT_HOST=8080
-  fi
-  if port_busy "$HTTPS_PORT_HOST"; then
-    echo "[!] Port 443 is busy. Using 8443 for HTTPS."
-    HTTPS_PORT_HOST=8443
-  fi
-  if port_busy "$ADMIN_PORT_HOST"; then
-    echo "[!] Port 81 is busy. Using 8181 for Admin UI."
-    ADMIN_PORT_HOST=8181
-  fi
-}
-
-prepare_dirs() {
-  echo "[+] Preparing directories at ${NPM_DIR}..."
-  mkdir -p "${NPM_DIR}/data" "${NPM_DIR}/letsencrypt" "${NPM_DIR}/data/mysql"
-  cd "${NPM_DIR}"
-}
-
-write_compose() {
-  cat > "${NPM_DIR}/docker-compose.yml" << 'EOF'
+echo "[+] Создаем конфигурационный файл docker-compose.yml..."
+cat > "${NPM_DIR}/docker-compose.yml" << 'EOF'
 services:
   app:
     image: "jc21/nginx-proxy-manager:latest"
@@ -146,44 +59,19 @@ services:
     volumes:
       - ./data/mysql:/var/lib/mysql
 EOF
-}
 
-open_firewall() {
-  if ufw status | grep -q "Status: active"; then
-    echo "[+] Configuring UFW firewall..."
-    ufw allow 81/tcp || true
-    ufw allow 80/tcp || true
-    ufw allow 443/tcp || true
-  fi
-}
+echo "[+] Настраиваем порты в брандмауэре UFW..."
+if ufw status | grep -q "Status: active"; then
+  ufw allow 80/tcp || true
+  ufw allow 81/tcp || true
+  ufw allow 443/tcp || true
+fi
 
-bring_up() {
-  echo "[+] Pulling images and starting Nginx Proxy Manager..."
-  cd "${NPM_DIR}"
-  docker compose up -d
-}
+echo "[+] Запускаем контейнеры Nginx Proxy Manager через Docker Compose..."
+cd "${NPM_DIR}"
+docker compose up -d
 
-print_summary() {
-  echo
-  echo "=============================================="
-  echo "         Nginx Proxy Manager is starting      "
-  echo "----------------------------------------------"
-  echo "  Admin UI: http://YOUR_SERVER_IP:81"
-  echo "  Default login: admin@example.com / changeme"
-  echo "=============================================="
-  echo
-}
-
-# ---------------------------------------------------------------------
-# Run
-# ---------------------------------------------------------------------
-need_root
-pkg_install
-install_docker
-add_user_to_docker_group
-decide_ports
-prepare_dirs
-write_compose
-open_firewall
-bring_up
-print_summary
+echo "=============================================="
+echo "      Установка успешно завершена!"
+echo "      Панель управления: http://YOUR_SERVER_IP:81"
+echo "=============================================="
