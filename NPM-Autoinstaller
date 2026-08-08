@@ -1,198 +1,187 @@
-
-!/usr/bin/env bash
-Nginx Proxy Manager one-shot installer for Ubuntu 24.04
-Usage: sudo bash install-npm.sh
+#!/usr/bin/env bash
+# Nginx Proxy Manager one-shot installer for Ubuntu 24.04
+# Usage: curl -sSL https://githubusercontent.com... | bash
 
 set -euo pipefail
-—————————-
-Settings (you can tweak these)
-—————————-
 
-NPM_DIR=”${NPM_DIR:-/opt/nginx-proxy-manager}”
-APP_IMAGE=”jc21/nginx-proxy-manager:latest”
-DB_IMAGE=”jc21/mariadb-aria:latest”
-DB_NAME=”npm_db”
-DB_USER=”npm”
-Secure passwords (override with env DB_PASS / DB_ROOT_PASS if desired)
+# ---------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------
+NPM_DIR="${NPM_DIR:-/opt/nginx-proxy-manager}"
+APP_IMAGE="jc21/nginx-proxy-manager:latest"
+DB_IMAGE="jc21/mariadb-aria:latest"
+DB_NAME="npm_db"
+DB_USER="npm"
 
-DB_PASS=”${DB_PASS:-$(openssl rand -base64 24 | tr -dc A-Za-z0-9 | head -c 24 || echo npm_pass_ChangeMe)}”
-DB_ROOT_PASS=”${DB_ROOT_PASS:-$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 32 || echo root_pass_ChangeMe)}”
-Default host ports (may be auto-changed if busy)
+# Secure passwords
+DB_PASS="${DB_PASS:-$(openssl rand -base64 24 | tr -dc A-Za-z0-9 | head -c 24 || echo npm_pass_ChangeMe)}"
+DB_ROOT_PASS="${DB_ROOT_PASS:-$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 32 || echo root_pass_ChangeMe)}"
 
+# Default host ports
 HTTP_PORT_HOST_DEFAULT=80
 HTTPS_PORT_HOST_DEFAULT=443
 ADMIN_PORT_HOST_DEFAULT=81
-—————————-
-Helpers
-—————————-
 
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
 need_root() {
-if [[ “${EUID}” -ne 0 ]]; then
-echo “Please run as root: sudo bash $0”
-exit 1
-fi
+  if [[ "${EUID}" -ne 0 ]]; then
+    echo "[!] Please run as root or use sudo!"
+    exit 1
+  fi
 }
 
 pkg_install() {
-apt-get update -y
-DEBIAN_FRONTEND=noninteractive apt-get install -y \
-ca-certificates curl gnupg lsb-release lsof ufw openssl
+  echo "[+] Updating apt packages..."
+  apt-get update -y
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    ca-certificates curl gnupg lsb-release lsof ufw openssl
 }
 
 install_docker() {
-if ! command -v docker >/dev/null 2>&1; then
-echo “[+] Installing Docker…”
-curl -fsSL https://get.docker.com | bash
-systemctl enable docker
-systemctl start docker
-else
-echo “[=] Docker already installed.”
-fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "[+] Installing Docker from official repository..."
+    
+    # Add Docker's official GPG key:
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://docker.com -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
 
-# Compose plugin preferred
-if docker compose version >/dev/null 2>&1; then
-DOCKER_COMPOSE_CMD=”docker compose”
-else
-# Legacy standalone fallback
-if ! command -v docker-compose >/dev/null 2>&1; then
-echo “[+] Installing legacy docker-compose…”
-curl -L “https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)” \
--o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
-fi
-if command -v docker-compose >/dev/null 2>&1; then
-DOCKER_COMPOSE_CMD=”docker-compose”
-else
-echo “[!] Could not install docker compose.”
-exit 1
-fi
-fi
+    # Add the repository to Apt sources:
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://docker.com \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    
+    systemctl enable docker
+    systemctl start docker
+  else
+    echo "[=] Docker already installed."
+  fi
+
+  DOCKER_COMPOSE_CMD="docker compose"
 }
 
 add_user_to_docker_group() {
-# Add invoking user (if any) to docker group so they can run docker without sudo later
-if getent group docker >/dev/null 2>&1; then
-:
-else
-groupadd docker
-fi
-if [[ -n “${SUDO_USER:-}” ]]; then
-usermod -aG docker “${SUDO_USER}”
-fi
+  if getent group docker >/dev/null 2>&1; then
+    :
+  else
+    groupadd docker
+  fi
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    usermod -aG docker "${SUDO_USER}"
+  fi
 }
 
 port_busy() {
-local port=”$1″
-# returns 0 if busy
-if lsof -i TCP:”$port” -sTCP:LISTEN >/dev/null 2>&1; then
-return 0
-fi
-return 1
+  local port="$1"
+  if lsof -i TCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
 }
 
 decide_ports() {
-HTTP_PORT_HOST=”$HTTP_PORT_HOST_DEFAULT”
-HTTPS_PORT_HOST=”$HTTPS_PORT_HOST_DEFAULT”
-ADMIN_PORT_HOST=”$ADMIN_PORT_HOST_DEFAULT”
+  HTTP_PORT_HOST="$HTTP_PORT_HOST_DEFAULT"
+  HTTPS_PORT_HOST="$HTTPS_PORT_HOST_DEFAULT"
+  ADMIN_PORT_HOST="$ADMIN_PORT_HOST_DEFAULT"
 
-if port_busy “$HTTP_PORT_HOST”; then
-echo “[!] Port 80 is busy. Using 8080 for HTTP.”
-HTTP_PORT_HOST=8080
-fi
-if port_busy “$HTTPS_PORT_HOST”; then
-echo “[!] Port 443 is busy. Using 8443 for HTTPS.”
-HTTPS_PORT_HOST=8443
-fi
-if port_busy “$ADMIN_PORT_HOST”; then
-echo “[!] Port 81 is busy. Using 8181 for Admin UI.”
-ADMIN_PORT_HOST=8181
-fi
+  if port_busy "$HTTP_PORT_HOST"; then
+    echo "[!] Port 80 is busy. Using 8080 for HTTP."
+    HTTP_PORT_HOST=8080
+  fi
+  if port_busy "$HTTPS_PORT_HOST"; then
+    echo "[!] Port 443 is busy. Using 8443 for HTTPS."
+    HTTPS_PORT_HOST=8443
+  fi
+  if port_busy "$ADMIN_PORT_HOST"; then
+    echo "[!] Port 81 is busy. Using 8181 for Admin UI."
+    ADMIN_PORT_HOST=8181
+  fi
 }
 
 prepare_dirs() {
-mkdir -p “${NPM_DIR}”
-cd “${NPM_DIR}”
-mkdir -p data letsencrypt data/mysql
+  echo "[+] Preparing directories at ${NPM_DIR}..."
+  mkdir -p "${NPM_DIR}/data" "${NPM_DIR}/letsencrypt" "${NPM_DIR}/data/mysql"
+  cd "${NPM_DIR}"
 }
 
 write_compose() {
-cat > “${NPM_DIR}/docker-compose.yml” <<EOF
+  cat > "${NPM_DIR}/docker-compose.yml" <<EOF
 services:
-app:
-image: “${APP_IMAGE}”
-restart: unless-stopped
-ports:
-– “${HTTP_PORT_HOST}:80”
-– “${ADMIN_PORT_HOST}:81”
-– “${HTTPS_PORT_HOST}:443”
-environment:
-DB_MYSQL_HOST: “db”
-DB_MYSQL_PORT: 3306
-DB_MYSQL_USER: “${DB_USER}”
-DB_MYSQL_PASSWORD: “${DB_PASS}”
-DB_MYSQL_NAME: “${DB_NAME}”
-volumes:
-– ./data:/data
-– ./letsencrypt:/etc/letsencrypt
-depends_on:
-– db
+  app:
+    image: "${APP_IMAGE}"
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT_HOST}:80"
+      - "${ADMIN_PORT_HOST}:81"
+      - "${HTTPS_PORT_HOST}:443"
+    environment:
+      DB_MYSQL_HOST: "db"
+      DB_MYSQL_PORT: 3306
+      DB_MYSQL_USER: "${DB_USER}"
+      DB_MYSQL_PASSWORD: "${DB_PASS}"
+      DB_MYSQL_NAME: "${DB_NAME}"
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+    depends_on:
+      - db
 
-db:
-image: “${DB_IMAGE}”
-restart: unless-stopped
-environment:
-MYSQL_ROOT_PASSWORD: “${DB_ROOT_PASS}”
-MYSQL_DATABASE: “${DB_NAME}”
-MYSQL_USER: “${DB_USER}”
-MYSQL_PASSWORD: “${DB_PASS}”
-volumes:
-– ./data/mysql:/var/lib/mysql
+  db:
+    image: "${DB_IMAGE}"
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASS}"
+      MYSQL_DATABASE: "${DB_NAME}"
+      MYSQL_USER: "${DB_USER}"
+      MYSQL_PASSWORD: "${DB_PASS}"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
 EOF
 }
 
 open_firewall() {
-# If UFW is active, allow the selected ports
-if ufw status | grep -q “Status: active”; then
-ufw allow “${ADMIN_PORT_HOST}”/tcp || true
-ufw allow “${HTTP_PORT_HOST}”/tcp || true
-ufw allow “${HTTPS_PORT_HOST}”/tcp || true
-fi
+  if ufw status | grep -q "Status: active"; then
+    echo "[+] Configuring UFW firewall..."
+    ufw allow "${ADMIN_PORT_HOST}"/tcp || true
+    ufw allow "${HTTP_PORT_HOST}"/tcp || true
+    ufw allow "${HTTPS_PORT_HOST}"/tcp || true
+  fi
 }
 
 bring_up() {
-echo “[+] Pulling images and starting NPM…”
-cd “${NPM_DIR}”
-${DOCKER_COMPOSE_CMD} up -d
+  echo "[+] Pulling images and starting Nginx Proxy Manager..."
+  cd "${NPM_DIR}"
+  ${DOCKER_COMPOSE_CMD} up -d
 }
 
 print_summary() {
-echo
-echo “==============================================”
-echo ” Nginx Proxy Manager is starting”
-echo “———————————————-“
-echo ” Admin UI: http://YOUR_SERVER_IP:${ADMIN_PORT_HOST}”
-echo ” Default login: admin@example.com / changeme”
-echo
-if [[ “${HTTP_PORT_HOST}” != “80” || “${HTTPS_PORT_HOST}” != “443” ]]; then
-echo ” NOTE:”
-echo ” – Ports 80/443 were busy, so we used:”
-echo ” HTTP -> ${HTTP_PORT_HOST}”
-echo ” HTTPS -> ${HTTPS_PORT_HOST}”
-echo ” – Let’s Encrypt requires inbound port 80.”
-echo ” Either free port 80/443 for this host or”
-echo ” forward 80/443 from your router to these ports.”
-fi
-echo “==============================================”
-echo
-echo “[Tip] To see logs: ${DOCKER_COMPOSE_CMD} logs -f”
-echo “[Tip] To restart: ${DOCKER_COMPOSE_CMD} restart”
-echo “[Tip] To stop/remove: ${DOCKER_COMPOSE_CMD} down”
-echo
+  echo
+  echo "=============================================="
+  echo "         Nginx Proxy Manager is starting      "
+  echo "----------------------------------------------"
+  echo "  Admin UI: http://YOUR_SERVER_IP:${ADMIN_PORT_HOST}"
+  echo "  Default login: admin@example.com / changeme"
+  echo
+  if [[ "${HTTP_PORT_HOST}" != "80" || "${HTTPS_PORT_HOST}" != "443" ]]; then
+    echo "  NOTE:"
+    echo "  - Ports 80/443 were busy, so we used:"
+    echo "    HTTP -> ${HTTP_PORT_HOST}"
+    echo "    HTTPS -> ${HTTPS_PORT_HOST}"
+    echo "  - Let's Encrypt requires inbound port 80."
+  fi
+  echo "=============================================="
+  echo
 }
-—————————-
-Run
-—————————-
 
+# ---------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------
 need_root
 pkg_install
 install_docker
