@@ -1,0 +1,25 @@
+name: Мій Перший Живий Конвеєр
+
+on: [push]
+
+jobs:
+  github-actions-job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Крок 1: Вітання
+        run: echo "Привіт! Цей крок виконується на офіційному сервері GitHub!"
+
+      - name: Крок 2: Перевірка часу та користувача
+        run: |
+          echo "Поточний час на сервері:"
+          date
+          echo "Хто запустив цей крок:"
+          whoami
+
+      - name: Крок 3: Перевірка характеристик сервера GitHub
+        run: |
+          echo "Яка версія Linux встановлена на GitHub:"
+          lsb_release -a
+          echo "Скільки оперативної пам'яті виділив GitHub:"
+          free -h
