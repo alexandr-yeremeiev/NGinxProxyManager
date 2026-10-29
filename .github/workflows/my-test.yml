@@ -1,25 +1,34 @@
-name: Мій Перший Живий Конвеєр
+name: Автоматичний Деплой (CD)
 
-on: [push]
+on:
+  push:
+    branches: [ "main" ] # Спрацьовує лише при пуші в головну гілку
 
 jobs:
-  github-actions-job:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Крок 1 Вітання
-        run: echo "Привіт! Цей крок виконується на офіційному сервері GitHub!"
+      - name: Крок 1: Клонування коду на сервері GitHub
+        uses: actions/checkout@v4
 
-      - name: Крок 2 Перевірка часу
-        run: |
-          echo "Поточний час на сервері:"
-          date
-          echo "Хто запустив цей крок:"
-          whoami
-
-      - name: Крок 3 Перевірка характеристик
-        run: |
-          echo "Яка версія Linux встановлена на GitHub:"
-          lsb_release -a
-          echo "Скільки оперативної пам'яті виділив GitHub:"
-          free -h
+      - name: Крок 2: Підключення по SSH та виконання команд на вашому сервері
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22 # Змініть порт, якщо у вас SSH працює на іншому порті
+          script: |
+            echo "=== ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
+            cd ~/github-actions-test
+            
+            echo "1. Оновлюємо код проєкту з Git..."
+            git pull || echo "Папка порожня або не зв'язана, йдемо далі."
+            
+            echo "2. Перезапускаємо Docker-контейнери..."
+            # Тут ви можете вказати команду перезапуску вашого Nginx Proxy Manager
+            # Наприклад: docker restart nginx-proxy-manager або docker-compose up -d --force-recreate
+            docker ps -a
+            
+            echo "=== ДЕПЛОЙ УСПІШНО ЗАВЕРШЕНО! ==="
