@@ -22,7 +22,7 @@ jobs:
           source: "."
           target: "/root/github-actions-test"
 
-      - name: Крок 3 Чистий запуск Nginx Proxy Manager
+      - name: Крок 3 Професійний запуск проєкту по SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -33,28 +33,11 @@ jobs:
           script: |
             echo "=== УСПІШНО ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
             
-            # 1. Створюємо чисту ізольовану папку для NPM
-            mkdir -p /root/nginx-proxy-manager
-            cd /root/nginx-proxy-manager
+            # Заходимо в папку, куди GitHub Actions на Кроці 2 вже скопіював ваші файли
+            cd /root/github-actions-test
             
-            # 2. Записуємо чисту офіційну конфігурацію вебсервера
-            cat << 'EOF' > docker-compose.yml
-            version: '3.8'
-            services:
-              app:
-                image: 'jc21/nginx-proxy-manager:latest'
-                restart: unless-stopped
-                ports:
-                  - '80:80'
-                  - '81:81'
-                  - '443:443'
-                volumes:
-                  - ./data:/data
-                  - ./letsencrypt:/etc/letsencrypt
-            EOF
-            
-            echo "=== ЗАПУСКАЄМО ОФІЦІЙНИЙ КОНТЕЙНЕР NPM ==="
-            # Запускаємо в активному для SSH режимі, щоб бачити помилки, якщо вони будуть
+            echo "=== ЗАПУСКАЄМО ВЕБСЕРВЕР З ВАШОГО ФАЙЛУ ==="
+            # Docker автоматично підхопить файл docker-compose.yml з вашого репозиторію
             docker compose up -d --force-recreate
             
             echo "=== ПЕРЕВІРКА ЗАПУЩЕНИХ ПРОЦЕСІВ ==="
