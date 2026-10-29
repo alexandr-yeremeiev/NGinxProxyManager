@@ -1,6 +1,4 @@
-# ... (Крок 1 та Крок 2 залишаються старими без змін) ...
-
-      - name: Крок 3 Самостійний запуск Adminer по SSH
+     - name: Крок 3 Самостійний запуск Adminer по SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
