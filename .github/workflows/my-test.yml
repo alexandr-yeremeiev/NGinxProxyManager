@@ -31,8 +31,12 @@ jobs:
           port: 22
           script: |
             echo "=== УСПІШНО ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
-            cd /root/github-actions-test
+            
+            # Заходимо у вкладену папку вашого репозиторію, де лежить docker-compose файл
+            cd /root/github-actions-test/NPM-Autoinstaller
+            
             echo "=== ЗАПУСКАЄМО DOCKER ==="
             docker compose up -d --force-recreate
+            
             echo "=== СПИСОК КОНТЕЙНЕРІВ ==="
             docker ps
