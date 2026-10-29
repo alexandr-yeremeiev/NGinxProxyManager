@@ -23,13 +23,12 @@ jobs:
             echo "=== 1. ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
             
             echo "=== 2. СТВОРЮЄМО ПАПКУ ПРОЄКТУ ТА ОНОВЛЮЄМО КОД ==="
-            # Цей рядок автоматично скачає ваш репозиторій у правильну папку на сервері
-            if [ ! -d "~/github-actions-test/.git" ]; then
-              rm -rf ~/github-actions-test
-              git clone https://github.com ~/github-actions-test
+            if [ ! -d "/root/github-actions-test/.git" ]; then
+              rm -rf /root/github-actions-test
+              git clone https://github.com /root/github-actions-test
             fi
             
-            cd ~/github-actions-test
+            cd /root/github-actions-test
             git pull
             
             echo "=== 3. ЗАПУСКАЄМО NGING X PROXY MANAGER В DOCKER ==="
