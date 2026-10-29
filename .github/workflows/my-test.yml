@@ -9,10 +9,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Клонування коду
+      - name: Клонування коду на сервері GitHub
         uses: actions/checkout@v4
 
-      - name: Підключення по SSH
+      - name: Підключення по SSH та автоматичний запуск проєкту
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -20,5 +20,20 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            echo "=== УСПІШНО ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
-            docker ps -a
+            echo "=== 1. ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
+            
+            echo "=== 2. СТВОРЮЄМО ПАПКУ ПРОЄКТУ ТА ОНОВЛЮЄМО КОД ==="
+            # Цей рядок автоматично скачає ваш репозиторій у правильну папку на сервері
+            if [ ! -d "~/github-actions-test/.git" ]; then
+              rm -rf ~/github-actions-test
+              git clone https://github.com ~/github-actions-test
+            fi
+            
+            cd ~/github-actions-test
+            git pull
+            
+            echo "=== 3. ЗАПУСКАЄМО NGING X PROXY MANAGER В DOCKER ==="
+            docker compose up -d --force-recreate
+            
+            echo "=== 4. ПЕРЕВІРЯЄМО ЗАПУЩЕНІ КОНТЕЙНЕРИ ==="
+            docker ps
