@@ -1,28 +1,6 @@
-name: Автоматичний Деплой (CD)
+# ... (Крок 1 та Крок 2 залишаються старими без змін) ...
 
-on:
-  push:
-    branches: [ "main" ]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Крок 1 Клонування коду
-        uses: actions/checkout@v4
-
-      - name: Крок 2 Копіювання файлів
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          source: "."
-          target: "/root/github-actions-test"
-
-      - name: Крок 3 Автоматичний запуск Minecraft по SSH
+      - name: Крок 3 Самостійний запуск Adminer по SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -33,17 +11,21 @@ jobs:
           script: |
             echo "=== УСПІШНО ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
             
-            # 1. Создаем изолированную папку для Майнкрафта
-            mkdir -p /root/minecraft-server
+            # 🎯 ЗАВДАННЯ 2.1: Створи нову чисту папку на сервері для цього проєкту.
+            # Наприклад: /root/adminer-panel
+            mkdir -p _______
             
-            # 2. Переносим файл конфигурации из папки деплоя в папку запуска
-            cp /root/github-actions-test/docker-compose.yml /root/minecraft-server/docker-compose.yml
-            cd /root/minecraft-server
+            # 🎯 ЗАВДАННЯ 2.2: Скопіюй файл docker-compose.yml з папки деплою 
+            # (/root/github-actions-test/docker-compose.yml) у твою нову створену папку.
+            cp /root/github-actions-test/docker-compose.yml _______/docker-compose.yml
             
-            echo "=== ЗАПУСКАЄМО MINECRAFT FABRIC SERVER ==="
-            # Запускаем контейнер. Флаг -d скачает образ и запустит игру
-            docker compose up -d --force-recreate
+            # 🎯 ЗАВДАННЯ 2.3: Перейди всередину своєї нової папки
+            cd _______
             
-            echo "=== ПЕРЕВІРКА ЗАПУЩЕНИХ КОНТЕЙНЕРІВ ==="
+            echo "=== ЗАПУСКАЄМО АДМІНКУ БАЗ ДАНИХ ==="
+            # 🎯 ЗАВДАННЯ 2.4: Напиши стандартну команду запуску Docker Compose у фоновому режимі з форсованим перестворенням
+            _______
+            
+            echo "=== ПЕРЕВІРКА ЗАПУЩЕНИХ ПРОЦЕСІВ ==="
             sleep 3
             docker ps
