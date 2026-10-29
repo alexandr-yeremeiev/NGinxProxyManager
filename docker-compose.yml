@@ -1,20 +1,13 @@
-version: '3.8'
-
 services:
-  mc-server:
-    image: 'itzg/minecraft-server:java25'
-    container_name: minecraft-fabric-server
+
+  adminer:
+    image: adminer
+    restart: always
     ports:
-      - '25565:25565'
+      - 8080:8080
+
+  db:
+    image: mysql:5.6
+    restart: always
     environment:
-      EULA: 'TRUE'
-      TYPE: 'FABRIC'
-      VERSION: '26.1.2'
-      MEMORY: '4G'
-      ONLINE_MODE: 'FALSE'
-      CREATE_CONSOLE_IN_PIPE: 'true'
-      AUTOPAUSE: 'FALSE'
-      OPS: 'Sasha'
-    volumes:
-      - ./data:/data
-    restart: unless-stopped
+      MYSQL_ROOT_PASSWORD: example
