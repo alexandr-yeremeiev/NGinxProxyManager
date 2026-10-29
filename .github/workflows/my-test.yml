@@ -9,10 +9,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Клонування коду на сервері GitHub
+      - name: Крок 1: Клонування коду на сервері GitHub
         uses: actions/checkout@v4
 
-      - name: Підключення по SSH та автоматичний запуск проєкту
+      - name: Крок 2: Автоматичне копіювання файлів на ваш сервер
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: "."
+          target: "/root/github-actions-test"
+
+      - name: Крок 3: Запуск Nginx Proxy Manager по SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -20,19 +30,11 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            echo "=== 1. ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
-            
-            echo "=== 2. СТВОРЮЄМО ПАПКУ ПРОЄКТУ ТА ОНОВЛЮЄМО КОД ==="
-            if [ ! -d "/root/github-actions-test/.git" ]; then
-              rm -rf /root/github-actions-test
-              git clone https://github.com /root/github-actions-test
-            fi
-            
+            echo "=== УСПІШНО ПІДКЛЮЧЕНО ДО ANSIBLE1 ==="
             cd /root/github-actions-test
-            git pull
             
-            echo "=== 3. ЗАПУСКАЄМО NGING X PROXY MANAGER В DOCKER ==="
+            echo "=== ЗАПУСКАЄМО NGING X PROXY MANAGER ==="
             docker compose up -d --force-recreate
             
-            echo "=== 4. ПЕРЕВІРЯЄМО ЗАПУЩЕНІ КОНТЕЙНЕРИ ==="
+            echo "=== СПИСОК ЗАПУЩЕНИХ КОНТЕЙНЕРІВ ==="
             docker ps
