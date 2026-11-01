@@ -1,4 +1,4 @@
-name: Автоматичний Деплой Сервера
+name: Автоматичний Деплой (CD)
 
 on:
   push:
@@ -8,16 +8,17 @@ jobs:
   deploy:
     runs-on: self-hosted
 
+    # 🔐 Передаємо секрети з GitHub у змінні сервера на час деплою
+    env:
+      SECRET_DB_ROOT_PASS: ${{ secrets.DB_ROOT_PASSWORD }}
+      SECRET_WP_DB_PASS: ${{ secrets.WP_DB_PASSWORD }}
+      MC_OPS_PLAYER: ${{ secrets.MINECRAFT_OPS }}
+
     steps:
-      - name: Крок 1. Клонування коду з Гітхабу
+      - name: Крок 1 Клонування коду
         uses: actions/checkout@v4
 
-      - name: Крок 2. Надання прав користувачу (якщо потрібно)
+      - name: Крок 2 Локальний запуск Docker Compose
         run: |
-          echo "Перевіряємо файли в репозиторії:"
-          ls -la
-
-      - name: Крок 3. Локальний запуск Docker Compose
-        run: |
-          echo "Запускаємо контейнери безпосередньо на вашому сервері..."
+          echo "Запускаємо контейнери із зашифрованими змінними..."
           docker compose up -d --build
