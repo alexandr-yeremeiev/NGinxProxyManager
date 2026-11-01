@@ -1,13 +1,56 @@
-services:
+name: Маніфест встановлення Minecraft Fabric сервера
 
-  adminer:
-    image: adminer
-    restart: always
-    ports:
-      - 8085:8080
+on:
+  push:
+    branches: [ "main" ]
 
-  db:
-    image: mysql:5.6
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: example
+jobs:
+  deploy-mc:
+    runs-on: self-hosted
+
+    steps:
+      - name: Крок 1. Підготовка локальної директорії
+        run: |
+          echo "Створюємо структуру папок для Майнкрафту в домашній директорії..."
+          mkdir -p ~/minecraft-fabric/data/mods
+
+      - name: Крок 2. Автоматичний запис docker-compose.yml
+        run: |
+          cat << 'EOF' > ~/minecraft-fabric/docker-compose.yml
+          services:
+            mc-server:
+              image: itzg/minecraft-server:java25  # Java 25 під версію 26.1.2
+              container_name: minecraft-fabric-server
+              ports:
+                - "25565:25565"
+              environment:
+                EULA: "TRUE"
+                TYPE: "FABRIC"
+                VERSION: "26.1.2"
+                MEMORY: "4G"
+                ONLINE_MODE: "FALSE"             # Піратський/офлайн режим
+                CREATE_CONSOLE_IN_PIPE: "true"   # Консольна труба для команд
+                AUTOPAUSE: "FALSE"               # Вимикаємо автопаузу
+                OPS: "Sasha"                     # Адмінка для Sasha
+              volumes:
+                - ./data:/data
+              restart: unless-stopped            # Автозапуск разом з Ubuntu
+          EOF
+
+      - name: Крок 3. Запуск Docker контейнера
+        run: |
+          cd ~/minecraft-fabric
+          echo "Зупиняємо старий контейнер, якщо він був..."
+          docker compose down || true
+          echo "Піднімаємо чистий Minecraft сервер..."
+          docker compose up -d
+
+      - name: Крок 4. Фінальний перезапуск для стабілізації
+        run: |
+          cd ~/minecraft-fabric
+          docker compose restart
+          echo "========================================================="
+          echo " Сервер успішно розгорнуто на вашому залізі!"
+          echo " Гравця Sasha призначено адміністратором."
+          echo " 📁 Папка для FileZilla (SFTP): ~/minecraft-fabric/data"
+          echo "========================================================="
