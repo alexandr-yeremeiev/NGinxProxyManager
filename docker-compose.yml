@@ -1,25 +1,37 @@
 version: '3.8'
-services:
-  mc-server:
-    image: itzg/minecraft-server:java25
-    container_name: minecraft-fabric-server
-    ports:
-      - "25565:25565"
-    environment:
-      EULA: "TRUE"
-      TYPE: "FABRIC"
-      VERSION: "26.1.2"
-      MEMORY: "4G"
-      ONLINE_MODE: "FALSE"
-      CREATE_CONSOLE_IN_PIPE: "true"
-      AUTOPAUSE: "FALSE"
-      OPS: "Sasha"
-    volumes:
-      - ./minecraft-data:/data
-    restart: unless-stopped
 
-  adminer:
-    image: adminer
-    restart: always
+services:
+  # Блок 1. База даних для сайту
+  db:
+    image: mariadb:11 # Надійна та швидка альтернатива MySQL
+    container_name: wordpress-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: secret_root_pass_123   # Пароль супер-адміна бази
+      MYSQL_DATABASE: wordpress_site              # Назва бази даних
+      MYSQL_USER: wp_user                         # Користувач сайту
+      MYSQL_PASSWORD: wp_secure_password_789      # Пароль користувача
+    volumes:
+      - db_data:/var/lib/mysql
+
+  # Блок 2. Сам веб-сервер WordPress
+  wordpress:
+    depends_on:
+      - db # Запускати сайт тільки ПІСЛЯ того, як підніметься база даних
+    image: wordpress:latest
+    container_name: wordpress-app
+    restart: unless-stopped
     ports:
-      - "8085:8080" # Ваш виправлений порт
+      - "8080:80" # Сайт буде доступний у вашій лабі за адресою http://192.168.1.159:8080
+    environment:
+      WORDPRESS_DB_HOST: db:3306                  # Вказуємо на перший блок (сервіс db)
+      WORDPRESS_DB_USER: wp_user                  # Має збігатися з MYSQL_USER
+      WORDPRESS_DB_PASSWORD: wp_secure_password_789 # Має збігатися з MYSQL_PASSWORD
+      WORDPRESS_DB_NAME: wordpress_site           # Має збігатися з MYSQL_DATABASE
+    volumes:
+      - wp_data:/var/www/html
+
+# Постійні диски (щоб ваші статті та картинки не зникали після перезапуску)
+volumes:
+  db_data:
+  wp_data:
