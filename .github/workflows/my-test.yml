@@ -6,7 +6,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    rruns-on: self-hosted
 
     steps:
       - name: Крок 1 Клонування коду
